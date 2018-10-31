@@ -1,0 +1,245 @@
+---
+title: "Top Data by State"
+author: "Alicia Brown"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+```{r global, include=FALSE}
+library(dplyr)
+library(flexdashboard)
+library(ggplot2)
+library(httr)
+library(jsonlite)
+library(readr)
+library(stringr)
+library(tidyr)
+library(tidytext)
+library(wordcloud)
+require(wesanderson)
+```
+
+```{r}
+discoURL <- reactive({
+  discovery_url <- paste0("http://api.us.socrata.com/api/catalog/v1?published=true"
+                          ,"&only=",input$asset_type
+                          ,"&domains=",input$domain
+                          ,"&search_context=",input$domain
+                          ,"&limit=",input$n_datasets
+                          ,"&order=",input$rank)
+  discovery_url
+})
+```
+
+```{r}
+# Reactive data available for all shiny modules
+discoData <- reactive({
+  
+  datasets <- fromJSON(discoURL(),simplifyDataFrame = TRUE)
+  resource <- datasets$results$resource
+
+  if (is.null(resource) == FALSE){
+  
+    raw_data <- resource %>%
+      select(id,name,description,download_count,updatedAt,createdAt)
+    
+    # page view stats
+    page_views <- resource$page_views
+    data <- cbind(raw_data, page_views)
+    
+    # domain category
+    classification <- datasets$results$classification
+    data <- cbind(data, classification$domain_category) %>%
+      rename(category = `classification$domain_category`)
+    
+    # set selected rank variable for plots to adjust y variable easily
+    if(input$rank == 'page_views_last_month'){
+     data <- data %>%
+       mutate(measure_value = page_views_last_month)
+    }
+    if(input$rank == 'page_views_last_week'){
+      data <- data %>%
+       mutate(measure_value = page_views_last_week)
+    }
+    if(input$rank == 'page_views_total'){
+      data <- data %>%
+       mutate(measure_value = page_views_total)
+    }
+    
+    # capitalize x variables and replace NAs with 0 in download_count
+    data <- data %>%
+      mutate(download_count = replace_na(download_count, 0)) %>%
+      rename(Dataset = name,
+             Category = category)
+    
+    data
+  }else{
+   print('No data found!') 
+  }
+})
+```
+
+Inputs {.sidebar data-width=300}
+-----------------------------------------------------------------------
+
+Discover top data by:
+
+```{r}
+# Socrata State Domains
+selectInput("domain", label = "State Domain:",
+            choices = list(
+                        `California Franchise Tax Board` = "data.ftb.ca.gov",
+                        `California Controller's Office` = "bythenumbers.sco.ca.gov",
+                        `California Treasurer's Office` = "data.debtwatch.treasurer.ca.gov",
+                        `California Employment Development Department ` = "data.edd.ca.gov",
+                        `Colorado` = "data.colorado.gov",
+                        `Connecticut` = "data.ct.gov",
+                        `Hawaii` = "data.hawaii.gov",
+                        `Iowa` = "data.iowa.gov",
+                        `Maine` = "data.maine.gov",
+                        `Maryland` = "data.maryland.gov",
+                        `Massachusetts Comptroller` = "cthru.data.socrata.com",
+                        `Michigan` = "data.michigan.gov",
+                         # something weird with school results and need to clean up financial datasets
+                         #`MI Community Financial Dashboard` = 'mi-treasury.data.socrata.com',
+                         #`MI School Financial Data` = 'mischooldata.data.socrata.com',
+                        `New Jersey` = "data.nj.gov",
+                        `New York` = "data.ny.gov",
+                        `New York Department of Health` = "healthdata.ny.gov",
+                        `Oregon` = "http://data.oregon.gov",
+                        `Pennsylvania` = "data.pa.gov",
+                        `Texas` = "data.texas.gov",
+                        `Utah` = "opendata.utah.gov",
+                        `Vermont` = "data.vermont.gov",
+                        `Washington` = "data.wa.gov"
+                        ), 
+            selected = "data.colorado.gov")
+
+selectInput("asset_type", label = "Type:",
+            choices = c("calendar","chart","datalens","dataset","federated_href","file","filter","form","href","link","map","story","visualization"), selected="dataset")
+
+selectInput("n_datasets", label = "Number:",
+            choices = c(5, 10, 15, 20, 25), selected = 10)
+
+# download_count not available to pass to order parameter
+selectInput("rank", label = "Rank by:",
+            choices = list(`Views Last Month` = "page_views_last_month",
+           `Views Last Week` = "page_views_last_week",
+           `Total Views` = "page_views_total"), selected = "page_views_last_month")
+
+renderText("Powered by https://socratadiscovery.docs.apiary.io.")
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Top Public Data
+    
+```{r fig.width=18, fig.height=8}
+
+renderPlot({
+  
+  data_view <- discoData()
+  
+  # set sort order
+  data_view$Dataset <- factor(data_view$Dataset, levels=unique(data_view$Dataset[order(data_view$measure_value)]))
+  
+  # create Title of all currently selected variables in friendly format and make plot text more easily readable
+  ggplot(data_view) +
+  geom_bar(mapping = aes(x = Dataset, y = measure_value), na.rm = TRUE, stat = "identity") +
+  coord_flip() +
+  labs(x = '', y = '', title=paste0('Top ',input$n_datasets,' ',input$asset_type,'s for ',input$domain,' by ',str_to_title(str_replace_all(input$rank,'_',' ')))) +
+  theme(text = element_text(size=15), plot.title = element_text(size=15, hjust=0.5))
+  
+})
+```
+
+Row {.tabset}
+-----------------------------------------------------------------------
+
+### Metadata Description Cloud
+    
+```{r fig.width=18, fig.height=10}
+pal <- wes_palette("Darjeeling1")
+		
+renderPlot({
+  dataset_descriptions <- discoData() %>%
+    unnest_tokens(word, description) %>%
+    select(word) %>%
+    anti_join(stop_words) %>%
+    count(word) %>%
+    with(wordcloud(word, n, max.words = 100, colors=pal,scale=c(3.0,0.5), rot.per=0.1))
+})
+```
+
+### Category Metadata
+
+```{r fig.width=18, fig.height=10}
+
+renderPlot({
+
+data_view <- discoData() %>%
+  group_by(Category) %>%
+  summarize(download_count = sum(download_count),
+            page_views_last_month = sum(page_views_last_month),
+            page_views_last_week = sum(page_views_last_week),
+            page_views_total = sum(page_views_total))
+
+  # set selected rank variable for plots to adjust y variable easily
+  if(input$rank == 'page_views_last_month'){
+   data_view <- data_view %>%
+     mutate(measure_value = page_views_last_month)
+  }
+  if(input$rank == 'page_views_last_week'){
+    data_view <- data_view %>%
+     mutate(measure_value = page_views_last_week)
+  }
+  if(input$rank == 'page_views_total'){
+    data_view <- data_view %>%
+     mutate(measure_value = page_views_total)
+  }
+
+# set sort order and also had to invoke reorder for x aesthetic to sort decreasing
+data_view$Category <- factor(data_view$Category, levels=unique(data_view$Category[order(data_view$measure_value)]))
+
+# create Title of all currently selected variables in friendly format and make plot text more easily readable
+ggplot(data_view) +
+  geom_bar(mapping = aes(x = reorder(Category, -measure_value), y = measure_value), na.rm = TRUE, stat = "identity") +
+  labs(x = '', y = '', title=paste0('Category Metadata for Top ',input$n_datasets,' ',input$asset_type,'s by ',str_to_title(str_replace_all(input$rank,'_',' ')))) +
+  theme(text = element_text(size=15), axis.text.x = element_text(angle=45, hjust=1),plot.title = element_text(size=15, hjust=0.5))
+})
+
+```
+   
+### All Statistics
+
+```{r}
+renderTable({
+  
+  # format numbers with commas so easier to read in table view
+  data_view <- discoData() %>%
+    mutate(download_count = format(download_count, big.mark=","),
+           page_views_last_month = format(page_views_last_month, big.mark=","),
+           page_views_last_week = format(page_views_last_week, big.mark=","),
+           page_views_total = format(page_views_total, big.mark=",")) %>%
+    rename(`Views Last Month` = page_views_last_month,
+           `Views Last Week` = page_views_last_week,
+           `Views Total` = page_views_total,
+           `Downloads Total` = download_count) %>%
+    select(Dataset,`Views Last Month`,`Views Last Week`,`Views Total`,`Downloads Total`)
+
+  data_view
+})
+```
+
+### About the Discovery URL
+
+The Discovery API returns data found on Socrata client domains. Without any authentication, only public assets will be returned. Credentialed users may query their private assets as well. For more information on the API, check out https://socratadiscovery.docs.apiary.io.
+
+*Current URL*
+```{r}
+renderText(discoURL())
+```
