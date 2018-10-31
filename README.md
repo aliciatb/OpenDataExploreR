@@ -1,7 +1,7 @@
 # Welcome to the Open Data Explorer
 
 ## Data Discovery
-* State data portal explorer
+* State data portal explorer - https://alicia.shinyapps.io/StateTopDataExploreR/
 
 ## Data Contextualization
 
