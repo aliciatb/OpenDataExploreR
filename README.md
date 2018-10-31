@@ -6,7 +6,7 @@
 ## Data Contextualization
 
 ### Census American Community Survey
-* Tidy Census - Unemployment by Race & Ethnicity
+* Tidy Census - Unemployment by Race & Ethnicity - https://alicia.shinyapps.io/tidycensus_example/
 * Police Terry Stops in Seattle
 
 ## Motivations
