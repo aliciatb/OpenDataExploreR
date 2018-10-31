@@ -1,0 +1,59 @@
+---
+title: "Census Data"
+author: "Alicia Brown"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+    social: menu
+    source_code: embed
+  runtime: shiny
+---
+
+```{r setup, include=FALSE}
+options(tigris_use_cache = TRUE)
+
+library(dplyr)
+library(flexdashboard)
+library(knitr)
+library(kableExtra)
+library(mapview)
+library(tidycensus)
+
+#S2301_C01_013E: Total!!Estimate!!RACE AND HISPANIC OR LATINO ORIGIN!!Black or African American alone
+acs_data_geo <- get_acs(geography = "county", variables = "S2301_C01_013E", state = "WA", survey = "acs5", geometry = TRUE, year = 2016, key="1e04bf9ac5bbae0d7060b9cdefeb1ba143752a1e")
+
+acs_data <- get_acs(geography = "county", variables = "S2301_C01_013E", state = "WA", survey = "acs5", geometry = FALSE, year = 2016, key="595eeba40b3b3920afc611dba8aa068b769a51b9")
+acs_data$Year = 2016
+```
+
+Column {data-width=600}
+-----------------------------------------------------------------------
+
+### Employment Status in Washington County for Black or African American alone (S2301_C01_013E)
+
+* ACS Summary Variable: https://api.census.gov/data/2016/acs/acs5/subject/groups/S2301.html
+* TidyCensus: https://walkerke.github.io/tidycensus/
+* Census API Key: http://api.census.gov/data/key_signup.html
+
+```{r}
+mapview(acs_data_geo, zcol = "estimate", legend = TRUE)
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+```{r}
+# subset for table view
+summary_data <- acs_data %>%
+  select(NAME,estimate,moe,Year) %>%
+  rename(Name = NAME,
+         Estimate = estimate,
+         `MOE` = moe)
+
+summary_data$Estimate <- format(acs_data$estimate, big.mark=",")
+
+summary_data %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
