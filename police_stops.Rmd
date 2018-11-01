@@ -1,0 +1,143 @@
+---
+title: "Police Stops in Seattle"
+author: "Alicia Brown"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+```{r global, include=FALSE}
+# load data in 'global' chunk so it can be shared by all users of the dashboard
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(scales)
+library(tidycensus)
+library(tidyr)
+
+# public dataset requiring no authentication
+stops <- read_csv("https://data.seattle.gov/api/views/28ny-9ts8/rows.csv?accessType=DOWNLOAD")
+
+acs_year <- 2016
+  
+  # population by race
+  acs_data <- get_acs(geography = "place", variables = c('B03002_003E','B03002_004E','B03002_005E','B03002_006E','B03002_007E','B03002_008E','B03002_009E','B03002_012E'), state = "WA", survey = "acs5", geometry = FALSE, year = acs_year, key="1e04bf9ac5bbae0d7060b9cdefeb1ba143752a1e")
+  acs_data$Year = acs_year
+  
+  acs_seattle <- acs_data %>%
+    filter(NAME == 'Seattle city, Washington')
+```
+
+```{r}
+# Reactive data available for all shiny modules
+stopsData <- reactive({
+  
+  date_from <- input$dateRange[1]
+  date_to = input$dateRange[2]
+  
+  data <- stops %>%
+    filter(`Subject Perceived Race` != '-') %>%
+    filter(`Reported Date` >= date_from) %>%
+    filter(`Reported Date` <= date_to)
+  
+}) 
+```
+
+Inputs {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+  dateRangeInput('dateRange',
+      label = 'Date range:',
+      start = Sys.Date() - 30, end = Sys.Date()
+    )
+```
+
+Terry Stops are stops/frisks of citizens based on individual suspicion of criminal activity.
+
+Row
+-----------------------------------------------------------------------
+
+### Seattle Population 2016 (American Community Survey 5 Year Estimate)
+    
+```{r fig.width=18, fig.height=8}
+
+renderPlot({
+  
+  data_view <- acs_seattle %>%
+    select(GEOID, NAME, variable, estimate, Year) %>%
+    spread(key = variable, value = estimate) %>%
+    rename('White Alone' = B03002_003,
+           'Black or African American Alone' = B03002_004,
+           'American Indian and Alaska Native Alone' = B03002_005,
+           'Asian Alone' = B03002_006,
+           'Native Hawaiian and Other Pacific Islander Alone' = B03002_007,
+           'Some Other Race Alone' = B03002_008,
+           'Two or More Races' = B03002_009,
+           'Hispanic or Latino' = B03002_012) %>%
+    gather(`White Alone`,`Black or African American Alone`,`American Indian and Alaska Native Alone`,`Asian Alone`,`Native Hawaiian and Other Pacific Islander Alone`,`Some Other Race Alone`,`Two or More Races`,`Hispanic or Latino`, key = "Race", value = "Population Estimate")
+  
+  ggplot(data_view) +
+  geom_bar(mapping = aes(x = reorder(Race, -`Population Estimate`), y = `Population Estimate`), na.rm = TRUE, stat = "identity") +
+   scale_y_continuous(labels = comma) +
+  labs(x = '', y = '') +
+  theme(text = element_text(size=15), axis.text.x = element_text(angle=45, hjust=1),plot.title = element_text(size=15, hjust=0.5))
+      
+})
+
+```
+
+Row {.tabset}
+-----------------------------------------------------------------------
+
+### Total Stops by Date and Perceived Race
+    
+```{r}
+renderPlot({
+  
+  data_view <- stopsData()
+  
+  # set sort order
+  data_view$`Subject Perceived Race` <- factor(data_view$`Subject Perceived Race`, levels=unique(data_view$`Subject Perceived Race`))
+  
+  ggplot(data_view) +
+  geom_bar(mapping = aes(x = `Subject Perceived Race`), na.rm = TRUE) +
+  labs(x = '', y = '', title = paste('Police Stops in Seattle from',input$dateRange[1],'-',input$dateRange[2]))
+})
+```
+
+### Total Frisks by Date and Perceived Race
+    
+```{r}
+renderPlot({
+  
+  data_view <- stopsData() %>%
+    filter(`Frisk Flag` == 'Y')
+  
+  # set sort order
+  data_view$`Subject Perceived Race` <- factor(data_view$`Subject Perceived Race`, levels=unique(data_view$`Subject Perceived Race`))
+  
+  ggplot(data_view) +
+  geom_bar(mapping = aes(x = `Subject Perceived Race`), na.rm = TRUE) +
+  labs(x = '', y = '', title = paste('Police Frisks in Seattle from',input$dateRange[1],'-',input$dateRange[2]))
+})
+```
+
+### Total Arrests by Date and Perceived Race
+    
+```{r}
+renderPlot({
+  
+  data_view <- stopsData() %>%
+    filter(`Arrest Flag` == 'Y')
+  
+  # set sort order
+  data_view$`Subject Perceived Race` <- factor(data_view$`Subject Perceived Race`, levels=unique(data_view$`Subject Perceived Race`))
+  
+  ggplot(data_view) +
+  geom_bar(mapping = aes(x = `Subject Perceived Race`), na.rm = TRUE) +
+  labs(x = '', y = '', title = paste('Police Arrests in Seattle from',input$dateRange[1],'-',input$dateRange[2]))
+})
+```

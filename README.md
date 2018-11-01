@@ -7,7 +7,7 @@
 
 ### Census American Community Survey
 * Tidy Census - Unemployment by Race & Ethnicity - https://alicia.shinyapps.io/tidycensus_example/
-* Police Terry Stops in Seattle
+* Police Terry Stops in Seattle - https://alicia.shinyapps.io/PoliceDataContextualizer/
 
 ## Motivations
 * Participate in https://hacktoberfest.digitalocean.com/
