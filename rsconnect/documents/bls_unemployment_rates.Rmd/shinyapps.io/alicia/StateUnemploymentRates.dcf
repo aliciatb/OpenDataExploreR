@@ -1,0 +1,12 @@
+name: StateUnemploymentRates
+title: StateUnemploymentRates
+username:
+account: alicia
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 546422
+bundleId: 1675924
+url: https://alicia.shinyapps.io/StateUnemploymentRates/
+when: 1541047513.93352
+asMultiple: FALSE
+asStatic: FALSE

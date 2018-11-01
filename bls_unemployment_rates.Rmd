@@ -1,0 +1,105 @@
+---
+title: "Unemployment Rate"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(blscrapeR)
+library(dplyr)
+library(leaflet)
+library(tigris)
+library(wesanderson)
+
+df <- get_bls_county()
+```
+
+Inputs {.sidebar data-width=300}
+-----------------------------------------------------------------------
+
+County Unemployment Rates by State:
+
+```{r}
+# States and FIPs Code
+selectInput("state_fips", label = "State:",
+            choices = list(
+                        `Alaska` = "2",
+                        `California` = "6",
+                        `Colorado` = "8",
+                        `District of Columbia` = "11",
+                        `Idaho` = "16",
+                        `Illinois` = "17",
+                        `Iowa` = "19",
+                        `Kentucky` = "21",
+                        `Louisiana` = "22",
+                        `Maryland` = "24",
+                        `Minnesota` = "27",
+                        `Missouri` = "29",
+                        `New York` = "36",
+                        `Oregon` = "41",
+                        `Tennessee` = "47",
+                        `Texas` = "48",
+                        `Virginia` = "51",
+                        `Wisconsin` = "55",
+                        `Alabama` = "1",
+                        `Arizona` = "4",
+                        `Arkansas` = "5",
+                        `Indiana` = "18",
+                        `Kansas` = "20",
+                        `Maine` = "23",
+                        `Connecticut` = "9",
+                        `Delaware` = "10",
+                        `Georgia` = "13",
+                        `Hawaii` = "15",
+                        `South Carolina` = "45",
+                        `South Dakota` = "46",
+                        `Massachusetts` = "25",
+                        `Michigan` = "26",
+                        `Mississippi` = "28",
+                        `Nebraska` = "31",
+                        `Nevada` = "32",
+                        `New Hampshire` = "33",
+                        `New Jersey` = "34",
+                        `New Mexico` = "35",
+                        `North Carolina` = "37",
+                        `North Dakota` = "38",
+                        `Rhode Island` = "44",
+                        `Ohio` = "39",
+                        `Oklahoma` = "40",
+                        `Pennsylvania` = "42",
+                        `Florida` = "12",
+                        `Montana` = "30",
+                        `Utah` = "49",
+                        `Vermont` = "50",
+                        `Washington` = "53",
+                        `West Virginia` = "54",
+                        `Wyoming` = "56"
+                        ), 
+            selected = "53")
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Unemployment Map
+
+```{r fig.width=18, fig.height=8}
+
+renderPlot({
+  #pal <- wes_palette("BottleRocket1")
+  pal <- colorQuantile("YlOrRd", NULL, n = 20)
+  map.shape <- counties(cb = TRUE, year = 2016)
+  
+  data_view <- df %>%
+    filter(fips_state == input$state_fips)
+  
+  map_bls(map_data = data_view, fill_rate = "unemployed_rate", 
+               labtitle = "Unemployment Rate by County")
+  
+})
+```
