@@ -23,7 +23,7 @@ library(tidycensus)
 #S2301_C01_013E: Total!!Estimate!!RACE AND HISPANIC OR LATINO ORIGIN!!Black or African American alone
 acs_data_geo <- get_acs(geography = "county", variables = "S2301_C01_013E", state = "WA", survey = "acs5", geometry = TRUE, year = 2016, key="1e04bf9ac5bbae0d7060b9cdefeb1ba143752a1e")
 
-acs_data <- get_acs(geography = "county", variables = "S2301_C01_013E", state = "WA", survey = "acs5", geometry = FALSE, year = 2016, key="595eeba40b3b3920afc611dba8aa068b769a51b9")
+acs_data <- get_acs(geography = "county", variables = "S2301_C01_013E", state = "WA", survey = "acs5", geometry = FALSE, year = 2016, key="1e04bf9ac5bbae0d7060b9cdefeb1ba143752a1e")
 acs_data$Year = 2016
 ```
 
