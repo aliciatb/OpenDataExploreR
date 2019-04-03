@@ -1,0 +1,308 @@
+---
+title: "BenchmarkeR"
+author: "Alicia Brown"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: cerulean
+    orientation: rows
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(flexdashboard)
+library(ggplot2)
+library(httr)
+library(jsonlite)
+library(lubridate)
+library(readr)
+library(shiny)
+library(stringr)
+library(tidyr)
+require(wesanderson)
+
+api_mode = T
+```
+
+Inputs {.sidebar data-width=300}
+-----------------------------------------------------------------------
+
+```{r input}
+# download_count not available to pass to order parameter
+selectInput("rank", label = "Rank by:",
+            choices = list(`Views Last Month` = "page_views_last_month",
+           `Views Last Week` = "page_views_last_week",
+           `Total Views` = "page_views_total"), selected = "page_views_last_month")
+
+textAreaInput("domains", label = "Domains:", value = "data.seattle.gov,data.mesaaz.gov,www.dallasopendata.com", placeholder = "Domain", resize = "vertical")
+
+sliderInput("description_weight", label = "Meta Description weight", min = 0, max = 1, value = 1, step = .25, round = FALSE,
+  format = NULL, locale = NULL, ticks = T, animate = FALSE, dragRange = TRUE)
+sliderInput("category_weight", label = "Meta Category weight", min = 0, max = 1, value = 1, step = .25, round = FALSE,
+  format = NULL, locale = NULL, ticks = T, animate = FALSE, dragRange = TRUE)
+sliderInput("keywords_weight", label = "Meta Keywords weight", min = 0, max = 1, value = 1, step = .25, round = FALSE,
+  format = NULL, locale = NULL, ticks = T, animate = FALSE, dragRange = TRUE)
+sliderInput("source_weight", label = "Meta Source weight", min = 0, max = 1, value = 1, step = .25, round = FALSE,
+  format = NULL, locale = NULL, ticks = T, animate = FALSE, dragRange = TRUE)
+sliderInput("custom_weight", label = "Meta Custom Metadata weight", min = 0, max = 1, value = 0, step = .25, round = FALSE,
+  format = NULL, locale = NULL, ticks = T, animate = FALSE, dragRange = TRUE)
+
+renderText("Powered by https://socratadiscovery.docs.apiary.io.")
+```
+
+```{r primary_url}
+primary_domain <- reactive({
+  first_domain <- str_split(input$domains,",",simplify = TRUE)
+  first_domain <- first_domain[[1]]
+  first_domain
+})
+```
+
+```{r disco_url}
+discoURL <- reactive({
+  
+  #10,000 results seems to be enough for now
+  domains <- input$domains
+  
+  discovery_url <- paste0("http://api.us.socrata.com/api/catalog/v1?published=true&only=dataset"
+                          ,"&limit=10000"
+                          ,"&order=",input$rank
+                          ,"&domains=",input$domains)
+  discovery_url
+})
+```
+
+```{r disco_data}
+# Reactive data available for all shiny modules
+discoData <- reactive({
+  
+  if(api_mode == F){
+    static_file <- 'data/total_response.json'
+    if(input$rank == 'page_views_last_week'){
+      static_file <- 'data/last_7_days_response.json'
+    }
+    if(input$rank == 'page_views_last_month'){
+      static_file <- 'data/last_30_days_response.json'
+    }
+    
+    datasets <- read_json(static_file,simplifyDataFrame = TRUE)
+    
+  }else{
+    datasets <- fromJSON(discoURL(),simplifyDataFrame = TRUE)
+  }
+  
+  resource <- datasets$results$resource
+  
+  if (is.null(resource) == FALSE){
+    raw_data <- resource %>%
+      select(id,name,description,attribution,updatedAt,createdAt,download_count)
+    
+    # page view stats/update/create
+    page_views <- resource$page_views
+    last_updated <- resource$updatedAt
+    created <- resource$createdAt
+    
+    # meta
+    meta <- datasets$results$metadata
+    
+    # link
+    link <- datasets$results$link
+    
+    # domain
+    domain <- meta$domain
+    
+    # domain category
+    classification <- datasets$results$classification %>%
+      select(domain_category, domain_tags, domain_metadata)
+    
+    # todo: check if there are key/values in domain_metadata
+    # custommetadata <- unnest(classification$domain_metadata)
+    
+    data <- cbind(domain, raw_data, page_views, last_updated, created, link, classification)
+    
+    # set selected rank variable for plots to adjust y variable easily
+    if(input$rank == 'page_views_last_month'){
+     data <- data %>%
+       mutate(measure_value = page_views_last_month)
+    }
+    if(input$rank == 'page_views_last_week'){
+      data <- data %>%
+       mutate(measure_value = page_views_last_week)
+    }
+    if(input$rank == 'page_views_total'){
+      data <- data %>%
+       mutate(measure_value = page_views_total)
+    }
+    
+    # capitalize x variables, calculate meta score and replace NAs with 0 in download_count
+    data <- data %>%
+      mutate(download_count = replace_na(download_count, 0)) %>%
+      mutate(days_last_updated = (now() - ymd_hms(last_updated))/ddays(1)) %>%
+      mutate(has_description = ifelse(is.na(description), 0, 1 * input$description_weight)) %>%
+      mutate(has_category = ifelse(is.na(domain_category), 0, 1 * input$category_weight)) %>%
+      mutate(has_source = ifelse(is.na(attribution), 0, 1 * input$source_weight)) %>%
+      mutate(has_keywords = ifelse(is.na(domain_tags), 0, 1 * input$keywords_weight)) %>%
+      mutate(has_custom = ifelse("key" %in% names(domain_metadata), 1 * input$custom_weight, 0)) %>%
+      mutate(`Metadata Score` = (has_description + has_category + has_source + has_keywords + has_custom)/(input$description_weight + input$category_weight + input$source_weight + input$keywords_weight + input$custom_weight) * 100)
+
+    data
+    }else{
+      NULL
+    }
+})
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Primary Domain {.value-box}
+
+```{r primary_domain}
+renderValueBox({
+  domain <- primary_domain()
+  
+  valueBox(domain, 
+           icon = "fa-city")
+})
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Datasets {.value-box}
+
+```{r domain_dataset_count}
+renderValueBox({
+  data_view <- discoData()
+  
+  data_view <- data_view %>%
+    filter(domain == primary_domain())
+    
+  assets_count <- nrow(data_view)
+  
+  valueBox(assets_count, 
+           icon = "fa-area-chart",
+           color = "info")
+  
+})
+```
+
+### Median Last Update (days) {.value-box}
+
+```{r domain_days_last_update, eval = T}
+renderValueBox({
+  
+  data_view <- discoData() %>%
+    filter(domain == primary_domain())
+    
+  median_days <- median(data_view$days_last_updated)
+  median_days <- format(median_days, digits = 1)
+  
+  valueBox(median_days, 
+           icon = "fa-calendar",
+           color = ifelse(median_days > 40, "warning", "success"))
+  
+})
+```
+
+### Average Meta Score {.gauge}
+
+```{r primary_scores}
+renderGauge({
+  data_view <- discoData()
+  
+  data_view <- data_view %>%
+    filter(domain == primary_domain())
+  
+  meta_score <- mean(data_view$`Metadata Score`)
+  
+  meta_score <- format(meta_score, digits = 1)
+  
+  gauge(meta_score, min = 0, max = 100, symbol = '%', gaugeSectors(
+    success = c(90, 100), warning = c(50, 89), danger = c(0, 49)
+  ))
+  
+})
+```
+
+Row {.tabset}
+-----------------------------------------------------------------------
+
+### Domain Metadata Scores
+
+```{r domain_scores, fig.width=18, fig.height=8}
+renderPlot({
+  
+  data_view <- discoData() %>%
+    group_by(domain) %>%
+    summarize(`Metadata Score` = mean(`Metadata Score`))
+  
+  if(length(data_view) > 0){
+    # set sort order (todo: check out forcats package)
+    data_view$domain <- factor(data_view$domain, levels=unique(data_view$domain[order(data_view$`Metadata Score`)]))
+    
+    # view Metadata score by domain - todo: add label to bar with score %
+    ggplot(data_view) +
+    geom_bar(mapping = aes(x = domain, y = `Metadata Score`, fill=domain), na.rm = TRUE, stat = "identity") +
+    scale_fill_manual(values = wes_palette("Zissou1")) + 
+    coord_flip() +
+    labs(x = '', y = '', 
+        title=paste0('Metadata Score by ',str_to_title(str_replace_all(input$rank,'_',' ')))) +
+theme(text = element_text(size=15), plot.title = element_text(size=15, hjust=0.5))
+  }
+})
+```
+
+### All Dataset Scores & Stats
+    
+```{r fig.width=18, fig.height=8}
+
+renderTable({
+  
+  data_view <- discoData()
+   
+  if(length(data_view) > 0){
+    data_view <- data_view %>%
+      
+    # format numbers with commas so easier to read in table view
+    mutate(download_count = format(download_count, big.mark=","),
+           page_views_last_month = format(page_views_last_month, big.mark=","),
+           page_views_last_week = format(page_views_last_week, big.mark=","),
+           page_views_total = format(page_views_total, big.mark=","),
+           # create href tags
+           link = paste0('<a href="',link,'" target="_blank">',name,'</a>'),
+           domain = paste0('<a href="https://',domain,'/browse" target="_blank">',domain,'</a>')) %>%
+    rename(`Views Last Month` = page_views_last_month,
+           `Views Last Week` = page_views_last_week,
+           `Views Total` = page_views_total,
+           `Downloads Total` = download_count,
+           `Last Updated (days)` = days_last_updated) %>%
+    select(link, domain, `Metadata Score`, `Last Updated (days)`,`Views Last Month`,`Views Last Week`)
+
+  data_view
+  }
+  else{
+    paste0('No results found for <a href="',discoURL(),'" target="_blank">',discoURL(),'</a>')
+  }
+}
+# allow html hyperlinks
+, sanitize.text.function = function(x) x)
+```
+
+### About
+
+The Metadata Score is calculate by examining dataset `description`, `category`, `keywords/tags`, `source/attribution` and `custom metadata` and assigning a zero if there is no value or 1 if there is any value. The weight of each attribute can also be set from 0 to 1 via the input controls. Then the sum of the 5 attribute scores is divided by the sum of all the weights and finally multiplied by 100.
+
+Data portals powered by [Socrata](https://socrata.com/).
+
+```{r print_disco_url, eval=F}
+# helpful for debugging
+renderTable({
+  url <- discoURL()
+  paste0('<a href="',url,'" target="_blank">',url,'</a>')
+}
+# allow html hyperlinks
+, sanitize.text.function = function(x) x)
+```

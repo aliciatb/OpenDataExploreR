@@ -1,0 +1,175 @@
+---
+title: "Open Data ExploreR"
+author: "Alicia Brown"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(dplyr)
+library(flexdashboard)
+library(httr)
+library(jsonlite)
+library(tidyr)
+
+sample_search_terms <- c('Employment',
+                         'Jobs',
+                         'Income',
+                         'Earnings',
+                         'Population',
+                         'Public Safety',
+                         'Calls',
+                         'Crimes',
+                         'Equity',
+                         'Homelessness',
+                         'Opiods',
+                         'Marijuana',
+                         'Environment',
+                         'Air Quality',
+                         'Water Quality',
+                         'Finance',
+                         'Budget',
+                         'Dashboard',
+                         'Economy',
+                         'Permits',
+                         'Housing',
+                         'Development',
+                         'Transit',
+                         'Bridges',
+                         'Roads',
+                         'Bicycle',
+                         'Pedestrian',
+                         'Parks',
+                         'Trails')
+```
+
+```{r}
+discoURL <- reactive({
+  discovery_url <- paste0("http://api.us.socrata.com/api/catalog/v1?published=true"
+                          ,"&only=",input$asset_type
+                          ,"&q=",input$query
+                          ,"&min_should_match=",input$min_should_match
+                          ,"&limit=",input$n_datasets
+                          ,"&order=",input$rank)
+  discovery_url
+})
+```
+
+```{r}
+# Reactive data available for all shiny modules
+discoData <- reactive({
+  
+  datasets <- fromJSON(URLencode(discoURL()),simplifyDataFrame = TRUE)
+  resource <- datasets$results$resource
+  meta <- datasets$results$metadata
+
+  if (is.null(resource) == FALSE){
+  
+    raw_data <- resource %>%
+      select(id,name,description,download_count,updatedAt,createdAt)
+    
+    # page view stats
+    page_views <- resource$page_views
+    # link
+    link <- datasets$results$link
+    # domain
+    domain <- meta$domain
+    
+    # bind columns together
+    data <- cbind(raw_data, page_views, link, domain)
+    
+    # set selected rank variable for plots to adjust y variable easily
+    if(input$rank == 'page_views_last_month'){
+     data <- data %>%
+       mutate(measure_value = page_views_last_month)
+    }
+    if(input$rank == 'page_views_last_week'){
+      data <- data %>%
+       mutate(measure_value = page_views_last_week)
+    }
+    if(input$rank == 'page_views_total'){
+      data <- data %>%
+       mutate(measure_value = page_views_total)
+    }
+    
+    # capitalize variables and replace NAs with 0 in download_count
+    data <- data %>%
+      mutate(download_count = replace_na(download_count, 0)) %>%
+      rename(Name = name,
+             Link = link,
+             Domain = domain)
+    data
+  }else{
+    NULL
+  }
+})
+```
+
+Inputs {.sidebar data-width=300}
+-----------------------------------------------------------------------
+
+Discover top data by:
+
+```{r}
+sample_search_term <- sample(sample_search_terms,1)
+textInput("query", label = "Query:", value = sample_search_term, placeholder = "search by")
+
+sliderInput("min_should_match", label = "Minimum word match", min = 1, max = 10, value = 2, step = 1, round = FALSE,
+  format = NULL, locale = NULL, ticks = FALSE, animate = FALSE, dragRange = TRUE)
+
+selectInput("asset_type", label = "Type:",
+            choices = c("dataset","chart","map","story","filter","datalens","measure","href","federated_href","file","link","form","calendar"), selected="dataset")
+
+selectInput("n_datasets", label = "Number:",
+            choices = c(5, 10, 15, 20, 25, 50, 75, 100), selected = 25)
+
+# download_count not available to pass to order parameter
+selectInput("rank", label = "Rank by:",
+            choices = list(`Views Last Month` = "page_views_last_month",
+           `Views Last Week` = "page_views_last_week",
+           `Total Views` = "page_views_total"), selected = "page_views_last_month")
+
+renderText("Powered by https://socratadiscovery.docs.apiary.io.")
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Top Public Data
+    
+```{r fig.width=18, fig.height=8}
+
+renderTable({
+  
+  data_view <- discoData()
+
+  if(length(data_view) > 0){
+    data_view <- data_view %>%
+    # format numbers with commas so easier to read in table view
+    mutate(download_count = format(download_count, big.mark=","),
+           page_views_last_month = format(page_views_last_month, big.mark=","),
+           page_views_last_week = format(page_views_last_week, big.mark=","),
+           page_views_total = format(page_views_total, big.mark=","),
+           # create href tags
+           Link = paste0('<a href="',Link,'" target="_blank">',Name,'</a>'),
+           Domain = paste0('<a href="https://',Domain,'/browse" target="_blank">',Domain,'</a>')) %>%
+    rename(`Views Last Month` = page_views_last_month,
+           `Views Last Week` = page_views_last_week,
+           `Views Total` = page_views_total,
+           `Downloads Total` = download_count,
+           Site = Domain) %>%
+    select(Link, Site,`Views Last Month`,`Views Last Week`,`Views Total`,`Downloads Total`)
+
+  data_view
+  }
+  else{
+    paste0('No results found for <a href="',discoURL(),'" target="_blank">',discoURL(),'</a>')
+  }
+}
+# allow html hyperlinks
+, sanitize.text.function = function(x) x)
+```
