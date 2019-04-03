@@ -30,12 +30,6 @@ Inputs {.sidebar data-width=300}
 -----------------------------------------------------------------------
 
 ```{r input}
-# download_count not available to pass to order parameter
-selectInput("rank", label = "Rank by:",
-            choices = list(`Views Last Month` = "page_views_last_month",
-           `Views Last Week` = "page_views_last_week",
-           `Total Views` = "page_views_total"), selected = "page_views_last_month")
-
 textAreaInput("domains", label = "Domains:", value = "data.seattle.gov,data.mesaaz.gov,www.dallasopendata.com", placeholder = "Domain", resize = "vertical")
 
 sliderInput("description_weight", label = "Meta Description weight", min = 0, max = 1, value = 1, step = .25, round = FALSE,
@@ -46,8 +40,14 @@ sliderInput("keywords_weight", label = "Meta Keywords weight", min = 0, max = 1,
   format = NULL, locale = NULL, ticks = T, animate = FALSE, dragRange = TRUE)
 sliderInput("source_weight", label = "Meta Source weight", min = 0, max = 1, value = 1, step = .25, round = FALSE,
   format = NULL, locale = NULL, ticks = T, animate = FALSE, dragRange = TRUE)
-sliderInput("custom_weight", label = "Meta Custom Metadata weight", min = 0, max = 1, value = 0, step = .25, round = FALSE,
+sliderInput("custom_weight", label = "Meta Custom Metadata weight", min = 0, max = 1, value = 1, step = .25, round = FALSE,
   format = NULL, locale = NULL, ticks = T, animate = FALSE, dragRange = TRUE)
+
+# download_count not available to pass to order parameter
+selectInput("rank", label = "Sort datasets by:",
+            choices = list(`Views Last Month` = "page_views_last_month",
+           `Views Last Week` = "page_views_last_week",
+           `Total Views` = "page_views_total"), selected = "page_views_last_month")
 
 renderText("Powered by https://socratadiscovery.docs.apiary.io.")
 ```
@@ -93,6 +93,9 @@ discoData <- reactive({
     datasets <- fromJSON(discoURL(),simplifyDataFrame = TRUE)
   }
   
+  # debug
+  # datasets <- fromJSON('http://api.us.socrata.com/api/catalog/v1?published=true&only=dataset&limit=10000&order=page_views_last_month&domains=www.dallasopendata.com',simplifyDataFrame = TRUE)
+  
   resource <- datasets$results$resource
   
   if (is.null(resource) == FALSE){
@@ -116,9 +119,6 @@ discoData <- reactive({
     # domain category
     classification <- datasets$results$classification %>%
       select(domain_category, domain_tags, domain_metadata)
-    
-    # todo: check if there are key/values in domain_metadata
-    # custommetadata <- unnest(classification$domain_metadata)
     
     data <- cbind(domain, raw_data, page_views, last_updated, created, link, classification)
     
@@ -144,7 +144,8 @@ discoData <- reactive({
       mutate(has_category = ifelse(is.na(domain_category), 0, 1 * input$category_weight)) %>%
       mutate(has_source = ifelse(is.na(attribution), 0, 1 * input$source_weight)) %>%
       mutate(has_keywords = ifelse(is.na(domain_tags), 0, 1 * input$keywords_weight)) %>%
-      mutate(has_custom = ifelse("key" %in% names(domain_metadata), 1 * input$custom_weight, 0)) %>%
+      # empty list() = 6 characters
+      mutate(has_custom = ifelse(nchar(domain_metadata) > 6, 1 * input$custom_weight, 0)) %>%
       mutate(`Metadata Score` = (has_description + has_category + has_source + has_keywords + has_custom)/(input$description_weight + input$category_weight + input$source_weight + input$keywords_weight + input$custom_weight) * 100)
 
     data
@@ -255,7 +256,7 @@ theme(text = element_text(size=15), plot.title = element_text(size=15, hjust=0.5
 })
 ```
 
-### All Dataset Scores & Stats
+### Dataset Scores & Stats
     
 ```{r fig.width=18, fig.height=8}
 
@@ -279,7 +280,43 @@ renderTable({
            `Views Total` = page_views_total,
            `Downloads Total` = download_count,
            `Last Updated (days)` = days_last_updated) %>%
-    select(link, domain, `Metadata Score`, `Last Updated (days)`,`Views Last Month`,`Views Last Week`)
+    select(link, domain, `Metadata Score`, `Last Updated (days)`,`Views Last Week`,`Views Last Month`,`Views Total`,`Downloads Total`)
+
+  data_view
+  }
+  else{
+    paste0('No results found for <a href="',discoURL(),'" target="_blank">',discoURL(),'</a>')
+  }
+}
+# allow html hyperlinks
+, sanitize.text.function = function(x) x)
+```
+
+### Individual Metadata Scores
+    
+```{r fig.width=18, fig.height=8}
+
+renderTable({
+  
+  data_view <- discoData()
+   
+  if(length(data_view) > 0){
+    data_view <- data_view %>%
+      
+    # format numbers with commas so easier to read in table view
+    mutate(download_count = format(download_count, big.mark=","),
+           page_views_last_month = format(page_views_last_month, big.mark=","),
+           page_views_last_week = format(page_views_last_week, big.mark=","),
+           page_views_total = format(page_views_total, big.mark=","),
+           # create href tags
+           link = paste0('<a href="',link,'" target="_blank">',name,'</a>'),
+           domain = paste0('<a href="https://',domain,'/browse" target="_blank">',domain,'</a>')) %>%
+    rename(`Has Description` = has_description,
+           `Has Category` = has_category,
+           `Has Keywords` = has_keywords,
+           `Has Source` = has_source,
+           `Has Custom` = has_custom) %>%
+    select(link, domain,`Metadata Score`,`Has Description`,`Has Category`,`Has Keywords`,`Has Source`,`Has Custom`)
 
   data_view
   }

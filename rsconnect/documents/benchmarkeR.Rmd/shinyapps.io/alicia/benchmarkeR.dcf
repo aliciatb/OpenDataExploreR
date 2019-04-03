@@ -5,8 +5,8 @@ account: alicia
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 834712
-bundleId: 1983024
+bundleId: 1983077
 url: https://alicia.shinyapps.io/benchmarkeR/
-when: 1554256049.25993
+when: 1554258714.6011
 asMultiple: FALSE
 asStatic: FALSE
