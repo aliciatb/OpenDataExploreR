@@ -1,9 +1,9 @@
 # Welcome to the Open Data Explorer
 
 ## Data Discovery
-* OpenDataDiscovereR - https://alicia.shinyapps.io/OpenDataDiscovereR/
-* BenchmarkeR - https://alicia.shinyapps.io/BenchmarkeR
-* State data portal explorer - https://alicia.shinyapps.io/StateDataExploreR/
+* [OpenDataDiscovereR](https://alicia.shinyapps.io/OpenDataDiscovereR/) - Open Data Search Tool to identify top data assets by topic across Socrata platform
+* [BenchmarkeR](https://alicia.shinyapps.io/BenchmarkeR) - Compare Data Portal Metadata Scores by any domain across Socrata platform
+* [State data portal explorer](https://alicia.shinyapps.io/StateDataExploreR/) - Discover metadata characteristics and statistics for state Open Data portals on the Socrata platform
 
 ## Data Contextualization
 

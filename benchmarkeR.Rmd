@@ -5,13 +5,15 @@ output:
   flexdashboard::flex_dashboard:
     theme: cerulean
     orientation: rows
-    social: menu
-    source_code: embed
-    favicon: favicon.png
+    social: [ "twitter", "facebook", "linkedin"]
+    source_code: "https://github.com/aliciatb/OpenDataExploreR"
+    favicon: favicon_hi_blue.png
 runtime: shiny
 ---
 
 ```{r setup, include=FALSE}
+options(shiny.sanitize.errors = T)
+
 library(dplyr)
 library(flexdashboard)
 library(ggplot2)
@@ -79,24 +81,21 @@ discoURL <- reactive({
 # Reactive data available for all shiny modules
 discoData <- reactive({
   
-  if(api_mode == F){
-    static_file <- 'data/total_response.json'
-    if(input$rank == 'page_views_last_week'){
-      static_file <- 'data/last_7_days_response.json'
-    }
-    if(input$rank == 'page_views_last_month'){
-      static_file <- 'data/last_30_days_response.json'
-    }
-    
-    datasets <- read_json(static_file,simplifyDataFrame = TRUE)
-    
-  }else{
-    datasets <- fromJSON(discoURL(),simplifyDataFrame = TRUE)
-  }
+  # validate domains so api call not made while incomplete
+  domains <- input$domains
   
-  # debug
-  # datasets <- fromJSON('http://api.us.socrata.com/api/catalog/v1?published=true&only=dataset&limit=10000&order=page_views_last_month&domains=www.dallasopendata.com',simplifyDataFrame = TRUE)
+  #domains <- 'data.seattle.gov,data.mesaaz.gov,www.dallasopendata.com'
+  last_domain_has_valid_extension <- str_detect(domains, '.com$|.gov$|.org$|.edu$')
   
+  if(last_domain_has_valid_extension){
+    # check for offline mode
+    if(api_mode == F){
+      static_file <- 'data/total_response.json'
+      datasets <- read_json(static_file,simplifyDataFrame = TRUE)
+    }else{
+      datasets <- fromJSON(discoURL(),simplifyDataFrame = TRUE)
+    }
+
   resource <- datasets$results$resource
   
   if (is.null(resource) == FALSE){
@@ -130,11 +129,11 @@ discoData <- reactive({
     }
     if(input$rank == 'page_views_last_week'){
       data <- data %>%
-       mutate(measure_value = page_views_last_week)
+        mutate(measure_value = page_views_last_week)
     }
     if(input$rank == 'page_views_total'){
       data <- data %>%
-       mutate(measure_value = page_views_total)
+        mutate(measure_value = page_views_total)
     }
     
     # capitalize x variables, calculate meta score and replace NAs with 0 in download_count
@@ -148,11 +147,14 @@ discoData <- reactive({
       # empty list() = 6 characters
       mutate(has_custom = ifelse(nchar(domain_metadata) > 6, 1 * input$custom_weight, 0)) %>%
       mutate(`Metadata Score` = (has_description + has_category + has_source + has_keywords + has_custom)/(input$description_weight + input$category_weight + input$source_weight + input$keywords_weight + input$custom_weight) * 100)
-
+  
     data
     }else{
       NULL
     }
+  }else{
+    NULL
+  }
 })
 ```
 
@@ -166,66 +168,71 @@ renderValueBox({
   domain <- primary_domain()
   
   valueBox(domain, 
-           icon = "fa-city")
+           icon = "fa-map-signs")
 })
 ```
 
 Row
 -----------------------------------------------------------------------
 
-### Datasets {.value-box}
+### Public Datasets {.value-box}
 
 ```{r domain_dataset_count}
 renderValueBox({
   data_view <- discoData()
   
-  data_view <- data_view %>%
-    filter(domain == primary_domain())
+  if(length(data_view) > 0){
+    data_view <- data_view %>%
+      filter(domain == primary_domain())
+      
+    assets_count <- nrow(data_view)
     
-  assets_count <- nrow(data_view)
-  
-  valueBox(assets_count, 
-           icon = "fa-area-chart",
-           color = "info")
-  
+    valueBox(assets_count, 
+             icon = "fa-bullseye",
+             color = "info")
+  }
 })
 ```
 
-### Median Last Update (days) {.value-box}
+### Average Days Metadata Last Updated {.value-box}
 
 ```{r domain_days_last_update, eval = T}
 renderValueBox({
   
-  data_view <- discoData() %>%
+  data_view <- discoData() 
+  
+  if(length(data_view) > 0){
+    data_view <- data_view %>%
     filter(domain == primary_domain())
     
-  median_days <- median(data_view$days_last_updated)
-  median_days <- format(median_days, digits = 1)
-  
-  valueBox(median_days, 
-           icon = "fa-calendar",
-           color = ifelse(median_days > 40, "warning", "success"))
-  
+    last_update_days <- mean(data_view$days_last_updated)
+    last_update_days <- format(last_update_days, digits = 1)
+    
+    valueBox(last_update_days,
+             icon = "fa-calendar",
+             color = ifelse(last_update_days > 40, "warning", "success"))
+  }
 })
 ```
 
-### Average Meta Score {.gauge}
+### Average Metadata Score {.gauge}
 
 ```{r primary_scores}
 renderGauge({
   data_view <- discoData()
   
-  data_view <- data_view %>%
-    filter(domain == primary_domain())
-  
-  meta_score <- mean(data_view$`Metadata Score`)
-  
-  meta_score <- format(meta_score, digits = 1)
-  
-  gauge(meta_score, min = 0, max = 100, symbol = '%', gaugeSectors(
-    success = c(90, 100), warning = c(50, 89), danger = c(0, 49)
-  ))
-  
+  if(length(data_view) > 0){
+    data_view <- data_view %>%
+      filter(domain == primary_domain())
+    
+    meta_score <- mean(data_view$`Metadata Score`)
+    
+    meta_score <- format(meta_score, digits = 1)
+    
+    gauge(meta_score, min = 0, max = 100, symbol = '%', gaugeSectors(
+      success = c(90, 100), warning = c(50, 89), danger = c(0, 49)
+    ))
+  }
 })
 ```
 
@@ -237,22 +244,24 @@ Row {.tabset}
 ```{r domain_scores, fig.width=18, fig.height=8}
 renderPlot({
   
-  data_view <- discoData() %>%
+  data_view <- discoData()
+  
+  if(length(data_view) > 0){
+    data_view <- data_view%>%
     group_by(domain) %>%
     summarize(`Metadata Score` = mean(`Metadata Score`))
   
-  if(length(data_view) > 0){
     # set sort order (todo: check out forcats package)
     data_view$domain <- factor(data_view$domain, levels=unique(data_view$domain[order(data_view$`Metadata Score`)]))
     
     # view Metadata score by domain - todo: add label to bar with score %
     ggplot(data_view) +
-    geom_bar(mapping = aes(x = domain, y = `Metadata Score`, fill=domain), na.rm = TRUE, stat = "identity") +
-    scale_fill_manual(values = wes_palette("Zissou1")) + 
-    coord_flip() +
-    labs(x = '', y = '', 
-        title=paste0('Metadata Score by ',str_to_title(str_replace_all(input$rank,'_',' ')))) +
-theme(text = element_text(size=15), plot.title = element_text(size=15, hjust=0.5))
+      geom_bar(mapping = aes(x = domain, y = `Metadata Score`, fill=domain), na.rm = TRUE, stat = "identity") +
+      scale_fill_manual(values = wes_palette("Zissou1")) + 
+      coord_flip() +
+      labs(x = '', y = '', 
+          title=paste0('Metadata Score by ',str_to_title(str_replace_all(input$rank,'_',' ')))) +
+    theme(text = element_text(size=15), plot.title = element_text(size=15, hjust=0.5))
   }
 })
 ```
@@ -275,13 +284,13 @@ renderTable({
            page_views_total = format(page_views_total, big.mark=","),
            # create href tags
            link = paste0('<a href="',link,'" target="_blank">',name,'</a>'),
-           domain = paste0('<a href="https://',domain,'/browse" target="_blank">',domain,'</a>')) %>%
+           domain = paste0('<a href="https://',domain,'/browse" target="_blank">',domain,'</a>'),
+           `Metadata Score` = format(`Metadata Score`, digits = 2)) %>%
     rename(`Views Last Month` = page_views_last_month,
            `Views Last Week` = page_views_last_week,
            `Views Total` = page_views_total,
-           `Downloads Total` = download_count,
-           `Last Updated (days)` = days_last_updated) %>%
-    select(link, domain, `Metadata Score`, `Last Updated (days)`,`Views Last Week`,`Views Last Month`,`Views Total`,`Downloads Total`)
+           `Downloads Total` = download_count) %>%
+    select(link, domain, `Metadata Score`,`Views Last Week`,`Views Last Month`,`Views Total`,`Downloads Total`)
 
   data_view
   }
@@ -309,6 +318,13 @@ renderTable({
            page_views_last_month = format(page_views_last_month, big.mark=","),
            page_views_last_week = format(page_views_last_week, big.mark=","),
            page_views_total = format(page_views_total, big.mark=","),
+           has_description = format(has_description, digits = 1),
+           has_category = format(has_category, digits = 1),
+           has_keywords = format(has_keywords, digits = 1),
+           has_source = format(has_source, digits = 1),
+           has_custom = format(has_custom, digits = 1),
+           `Metadata Score` = format(`Metadata Score`, digits = 2),
+           last_updated = format(ymd_hms(last_updated), "%Y-%m-%d"),
            # create href tags
            link = paste0('<a href="',link,'" target="_blank">',name,'</a>'),
            domain = paste0('<a href="https://',domain,'/browse" target="_blank">',domain,'</a>')) %>%
@@ -316,8 +332,9 @@ renderTable({
            `Has Category` = has_category,
            `Has Keywords` = has_keywords,
            `Has Source` = has_source,
-           `Has Custom` = has_custom) %>%
-    select(link, domain,`Metadata Score`,`Has Description`,`Has Category`,`Has Keywords`,`Has Source`,`Has Custom`)
+           `Has Custom` = has_custom,
+           `Metadata Last Updated` = last_updated) %>%
+    select(link, domain,`Metadata Score`,`Has Description`,`Has Category`,`Has Keywords`,`Has Source`,`Has Custom`,`Metadata Last Updated`)
 
   data_view
   }
@@ -335,7 +352,7 @@ The Metadata Score is calculate by examining dataset `description`, `category`, 
 
 Data portals powered by [Socrata](https://socrata.com/).
 
-```{r print_disco_url, eval=F}
+```{r print_disco_url, eval=T}
 # helpful for debugging
 renderTable({
   url <- discoURL()

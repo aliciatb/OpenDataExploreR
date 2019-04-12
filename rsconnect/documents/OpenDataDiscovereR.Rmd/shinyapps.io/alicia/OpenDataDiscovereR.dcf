@@ -5,8 +5,8 @@ account: alicia
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 757100
-bundleId: 1983142
+bundleId: 2006594
 url: https://alicia.shinyapps.io/OpenDataDiscovereR/
-when: 1554260904.66109
+when: 1555093778.49587
 asMultiple: FALSE
 asStatic: FALSE

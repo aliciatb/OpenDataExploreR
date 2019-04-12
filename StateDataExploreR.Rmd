@@ -3,13 +3,16 @@ title: "Top Data by State"
 author: "Alicia Brown"
 output: 
   flexdashboard::flex_dashboard:
+    theme: flatly
     orientation: rows
-    social: menu
-    source_code: embed
-    favicon: favicon.png
+    social: [ "twitter", "facebook", linkedin"]
+    source_code: "https://github.com/aliciatb/OpenDataExploreR"
+    favicon: favicon_hi_dark_green.png
 runtime: shiny
 ---
 ```{r global, include=FALSE}
+options(shiny.sanitize.errors = T)
+
 library(dplyr)
 library(flexdashboard)
 library(ggplot2)

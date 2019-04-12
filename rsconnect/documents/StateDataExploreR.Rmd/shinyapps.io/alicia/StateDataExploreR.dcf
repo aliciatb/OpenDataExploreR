@@ -5,8 +5,8 @@ account: alicia
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 757050
-bundleId: 1983137
+bundleId: 2006586
 url: https://alicia.shinyapps.io/StateDataExploreR/
-when: 1554260672.75262
+when: 1555093648.05962
 asMultiple: FALSE
 asStatic: FALSE
