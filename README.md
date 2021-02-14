@@ -8,7 +8,7 @@
 ## Data Contextualization
 
 ### Census American Community Survey and City of Seattle Police Stops
-* Tidy Census - Unemployment by Race & Ethnicity - https://alicia.shinyapps.io/tidycensus_example/
+<!--* Tidy Census - Unemployment by Race & Ethnicity - https://alicia.shinyapps.io/tidycensus_example/-->
 * Police Terry Stops in Seattle - https://alicia.shinyapps.io/PoliceDataContextualizer/
 
 ## Motivations
